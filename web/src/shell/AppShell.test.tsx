@@ -3375,7 +3375,7 @@ describe("Mobile header actions menu", () => {
     return trigger;
   }
 
-  it("offers Share and Clone for an owner of a top-level session", () => {
+  it("offers Share and agent switching for an owner of a top-level session", () => {
     withWindowOrigin("https://app.example.com", () => {
       mockConversations([
         {
@@ -3398,6 +3398,7 @@ describe("Mobile header actions menu", () => {
       // Clone is not a menu entry — forking lives on each assistant
       // message's "Fork from here" action (ChatPage).
       expect(screen.queryByRole("menuitem", { name: /^clone$/i })).toBeNull();
+      expect(screen.getByRole("menuitem", { name: /switch agent/i })).toBeInTheDocument();
       // Agent info is always available (policies section is shown for any session).
       expect(screen.getByRole("menuitem", { name: /agent info/i })).toBeInTheDocument();
       // Stop session is not a header action — it lives in the sidebar row's kebab.
@@ -3426,6 +3427,7 @@ describe("Mobile header actions menu", () => {
 
     expect(screen.queryByRole("menuitem", { name: /^share$/i })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: /^clone$/i })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /switch agent/i })).toBeNull();
   });
 
   it("shows the Agent info entry when the agent has tools or policies", () => {
@@ -3490,5 +3492,6 @@ describe("Mobile header actions menu", () => {
     expect(screen.queryByRole("menuitem", { name: /^share$/i })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: /^clone$/i })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: /^resume$/i })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /switch agent/i })).toBeNull();
   });
 });

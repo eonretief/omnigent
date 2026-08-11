@@ -52,6 +52,7 @@ const { registerSessionExpiryReload } = require("./session-expiry");
 const { decideWindowOpen, stripCrossOriginOpenerHeaders, WEB_SCHEMES } = require("./popupPolicy");
 const omnigentCli = require("./omnigent_cli");
 const serverManager = require("./server_manager");
+const { prepareDesktopStartup } = require("./desktop_startup");
 
 /** Absolute path to the bundled setup page (the "connect to server" form). */
 const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
@@ -742,8 +743,25 @@ function saveSettings(settings) {
  */
 let cachedCli = null;
 
+/**
+ * CLI override used by this shell. A persisted user choice wins. In an
+ * unpackaged checkout, prefer that checkout's uv environment so Electron dev
+ * exercises the source tree instead of an older globally installed Omnigent.
+ *
+ * @returns {string | null}
+ */
+function cliPathHint() {
+  const configured = loadSettings().omnigent_path;
+  if (typeof configured === "string" && configured.trim() !== "") return configured;
+  if (!app.isPackaged) {
+    const sourceCli = path.join(__dirname, "..", "..", "..", ".venv", "bin", "omnigent");
+    if (omnigentCli.isExecutableFile(sourceCli)) return sourceCli;
+  }
+  return null;
+}
+
 function resolvedCliPath() {
-  const configured = loadSettings().omnigent_path ?? null;
+  const configured = cliPathHint();
   if (
     cachedCli &&
     cachedCli.configuredPath === configured &&
@@ -769,8 +787,8 @@ function resolvedCliPath() {
  */
 async function applyCliPath(configuredPath) {
   const trimmed = String(configuredPath ?? "").trim();
-  const status = await omnigentCli.getCliStatus(trimmed || null);
-  const accepted = status.installed && status.source === "configured";
+  let status = await omnigentCli.getCliStatus(trimmed || cliPathHint());
+  let accepted = status.installed && status.source === "configured";
   if (accepted) {
     const settings = loadSettings();
     settings.omnigent_path = trimmed;
@@ -779,6 +797,9 @@ async function applyCliPath(configuredPath) {
     const settings = loadSettings();
     delete settings.omnigent_path;
     saveSettings(settings);
+    cachedCli = null;
+    status = await omnigentCli.getCliStatus(cliPathHint());
+    accepted = false;
   }
   return { ...status, accepted };
 }
@@ -793,7 +814,31 @@ async function clearCliPath() {
   const settings = loadSettings();
   delete settings.omnigent_path;
   saveSettings(settings);
-  return omnigentCli.getCliStatus(null);
+  cachedCli = null;
+  return omnigentCli.getCliStatus(cliPathHint());
+}
+
+/**
+ * Make the default desktop launch self-contained. A saved remote URL remains
+ * remote mode; otherwise Electron starts/reuses the local server and connects
+ * this machine as its execution host before the first window loads.
+ */
+async function prepareDefaultDesktopLaunch() {
+  const settings = loadSettings();
+  const result = await prepareDesktopStartup({
+    savedServerUrl: typeof settings.server_url === "string" ? settings.server_url : null,
+    cliPath: resolvedCliPath(),
+    isLoopbackServer: omnigentCli.isLoopbackServer,
+    startLocalServer: serverManager.startLocalServer,
+    ensureHostConnected: serverManager.ensureHostConnected,
+  });
+  if (result.mode === "local" && result.serverUrl) {
+    settings.server_url = result.serverUrl;
+    rememberRecentServer(settings, result.serverUrl);
+    saveSettings(settings);
+  }
+  if (result.error) console.warn(`[omnigent] desktop startup: ${result.error}`);
+  return result;
 }
 
 /** Maximum number of entries kept in the persisted recent-servers list. */
@@ -2399,7 +2444,7 @@ function registerIpc() {
     if (!isSetupPageSender(event)) {
       throw new Error("get-cli-status is only available to the setup page");
     }
-    return omnigentCli.getCliStatus(loadSettings().omnigent_path);
+    return omnigentCli.getCliStatus(cliPathHint());
   });
 
   // Setup page → set an explicit path to the `omnigent` binary. Persisted only
@@ -2460,7 +2505,7 @@ function registerIpc() {
       console.warn("[omnigent] cli-get-status from untrusted sender dropped");
       return null;
     }
-    return omnigentCli.getCliStatus(loadSettings().omnigent_path);
+    return omnigentCli.getCliStatus(cliPathHint());
   });
 
   // SPA → reset to auto-detected (clear the override). Chooses no path itself,
@@ -2906,7 +2951,7 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // App User Model ID so Windows attributes notifications/taskbar correctly.
     if (process.platform === "win32") app.setAppUserModelId("ai.omnigent.desktop");
     applyDockIcon();
@@ -2944,6 +2989,7 @@ if (!gotLock) {
     if (pendingDeepLinks.length > 0) {
       drainPendingDeepLinks();
     } else {
+      await prepareDefaultDesktopLaunch();
       createWindow();
     }
     updater.init();

@@ -2645,6 +2645,7 @@ def test_augment_claude_args_injects_mcp_and_hooks(tmp_path: Path) -> None:
     # pass the development-channels flag.
     assert "--dangerously-load-development-channels" not in args
     settings = _load_invocation_settings(args)
+    assert settings["tui"] == "default"
     assert "omnigent.claude_native_hook" in settings["hooks"]["Stop"][0]["hooks"][0]["command"]
     # ``PreCompact`` must be wired so the forwarder can surface
     # ``response.compaction.in_progress`` while Claude compacts in the
@@ -6598,6 +6599,41 @@ def test_wait_for_claude_prompt_ready_reports_empty_capture_count(
     assert "1 polls, 1 empty captures" in message
     # No pane text to surface when every capture was empty.
     assert "Last terminal output:" not in message
+
+
+def test_wait_for_claude_prompt_ready_dismisses_fullscreen_renderer_upsell(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The unhookable renderer upsell is cancelled before message injection."""
+    upsell = "\n".join(
+        [
+            "Try the new fullscreen renderer?",
+            "❯ 1. Yes, try it",
+            "2. Not now",
+            "Enter to confirm · Esc to cancel",
+        ]
+    )
+    ready = "────────────────\n❯ \n────────────────\n  Opus 5\n"
+    panes = iter((upsell, ready))
+    tmux_calls: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        "omnigent.claude_native_bridge._capture_pane",
+        lambda socket_path, tmux_target: next(panes),
+    )
+    monkeypatch.setattr(
+        "omnigent.claude_native_bridge._run_tmux",
+        lambda socket_path, *args: tmux_calls.append(args),
+    )
+    monkeypatch.setattr("omnigent.claude_native_bridge.time.sleep", lambda seconds: None)
+
+    claude_native_bridge._wait_for_claude_prompt_ready(
+        "/tmp/example/tmux.sock",
+        "claude:0.0",
+        timeout_s=1.0,
+    )
+
+    assert tmux_calls == [("send-keys", "-t", "claude:0.0", "Escape")]
 
 
 def test_wait_for_claude_prompt_ready_tail_is_observed_not_recaptured(

@@ -31,10 +31,6 @@ const NONE_CHOSEN = "";
 /**
  * Switch an open session in place to a different agent/harness.
  *
- * NOTE: currently unmounted — the header's "Switch agent" button was
- * removed, but the dialog (and its `/v1/sessions/{id}/switch-agent`
- * plumbing) is kept, tested, for when the affordance returns.
- *
  * Unlike Clone (fork), this keeps the SAME session — transcript, comments,
  * files, and workspace are untouched; only the agent/harness changes, and
  * the next turn runs on it. The picker lists only history-preserving targets

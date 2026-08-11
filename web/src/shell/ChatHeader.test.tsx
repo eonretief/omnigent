@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -49,6 +49,8 @@ function renderHeader(props: {
   canShare?: boolean;
   shareDisabled?: boolean;
   shareDisabledReason?: string;
+  canSwitchAgent?: boolean;
+  onSwitchAgent?: () => void;
 }) {
   return render(
     <MemoryRouter initialEntries={["/"]}>
@@ -70,6 +72,8 @@ function renderHeader(props: {
           onShare={() => {}}
           hasAgentInfo={false}
           onAgentInfo={() => {}}
+          canSwitchAgent={props.canSwitchAgent ?? false}
+          onSwitchAgent={props.onSwitchAgent ?? (() => {})}
           hasHeaderMenu={false}
           showFilesPanel={false}
           hasRailContent={false}
@@ -132,6 +136,21 @@ describe("ChatHeader — workspace pane alignment", () => {
 
     expect(header).not.toBeNull();
     expect(header).toHaveClass("inset-x-0", "md:right-[var(--workspace-panel-offset,0px)]");
+  });
+});
+
+describe("ChatHeader — in-place agent switching", () => {
+  it("shows the switch affordance only when allowed", () => {
+    const onSwitchAgent = vi.fn();
+    renderHeader({ sidebarOpen: true, canSwitchAgent: true, onSwitchAgent });
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch agent" }));
+    expect(onSwitchAgent).toHaveBeenCalledOnce();
+  });
+
+  it("hides the switch affordance when the session cannot be edited", () => {
+    renderHeader({ sidebarOpen: true, canSwitchAgent: false });
+    expect(screen.queryByRole("button", { name: "Switch agent" })).toBeNull();
   });
 });
 
@@ -253,6 +272,8 @@ function renderHeaderWithSession(ctx: TerminalFirstContextValue | null) {
                 onShare={() => {}}
                 hasAgentInfo={false}
                 onAgentInfo={() => {}}
+                canSwitchAgent={false}
+                onSwitchAgent={() => {}}
                 hasHeaderMenu={false}
                 showFilesPanel={false}
                 hasRailContent={false}
@@ -274,6 +295,8 @@ function renderHeaderWithSession(ctx: TerminalFirstContextValue | null) {
               onShare={() => {}}
               hasAgentInfo={false}
               onAgentInfo={() => {}}
+              canSwitchAgent={false}
+              onSwitchAgent={() => {}}
               hasHeaderMenu={false}
               showFilesPanel={false}
               hasRailContent={false}

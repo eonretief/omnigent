@@ -140,6 +140,14 @@ _CLAUDE_PROMPT_GLYPH = "❯"
 # followed by a numbered choice, which the chat input never renders. Used to
 # exclude startup menus from the readiness scan (see ``_is_selected_menu_row``).
 _SELECTED_MENU_ROW_RE = re.compile(rf"{_CLAUDE_PROMPT_GLYPH}\s*\d+\.\s")
+# Claude Code 2.1.212 introduced a renderer upsell that can appear even when
+# alternate-screen rendering is disabled. It has no hook, so dismiss only this
+# exact startup menu before waiting for the real chat composer.
+_FULLSCREEN_RENDERER_UPSELL_HINTS = (
+    "Try the new fullscreen renderer?",
+    "1. Yes, try it",
+    "2. Not now",
+)
 # Box-drawing glyphs Claude Code's input-box frame is made of. A line of
 # these below ``❯`` marks the live input box (see ``_is_box_rule``),
 # distinguishing it from a bare prompt echoed into scrollback.
@@ -1541,7 +1549,10 @@ def build_hook_settings(
         hooks.setdefault("PreToolUse", []).append(
             {"matcher": CLAUDE_SUBAGENT_TOOL_MATCHER, "hooks": [router_hook]}
         )
-    settings: _JsonObject = {"hooks": hooks}
+    # Omnigent drives Claude through tmux capture/injection. Pinning the
+    # classic renderer also marks the renderer choice as explicit, preventing
+    # Claude Code's fullscreen upsell from blocking the first web message.
+    settings: _JsonObject = {"hooks": hooks, "tui": "default"}
     if launch_model:
         settings["model"] = launch_model
     if launch_permission_mode:
@@ -3601,9 +3612,10 @@ def _wait_for_claude_prompt_ready(
     exists, but Claude Code's input box mounts a few seconds later
     (longer on a cold first boot). Keystrokes sent into that gap are
     dropped, so the first web-UI message silently vanishes. This gate
-    polls ``capture-pane`` for the input prompt before injection;
-    it returns immediately once mounted, so 2nd+ messages are
-    unaffected.
+    polls ``capture-pane`` for the input prompt before injection. Claude's
+    fullscreen-renderer upsell is dismissed with Escape when encountered;
+    other startup menus remain untouched. The gate returns immediately once
+    the composer is mounted, so 2nd+ messages are unaffected.
 
     Claude-native only — this is called from :func:`inject_user_message`,
     which exclusively serves the Claude Code terminal. It must never be
@@ -3633,6 +3645,7 @@ def _wait_for_claude_prompt_ready(
     # which misrepresents why the gate failed. Attaching what was observed
     # while it mattered keeps the error honest.
     last_nonempty = ""
+    renderer_upsell_dismissed = False
     # Poll at least once even at timeout_s=0: a single readiness check is
     # still meaningful, and it guarantees a capture to attach on failure.
     while True:
@@ -3642,6 +3655,14 @@ def _wait_for_claude_prompt_ready(
             last_nonempty = pane
         else:
             empty_polls += 1
+        if not renderer_upsell_dismissed and all(
+            hint in pane for hint in _FULLSCREEN_RENDERER_UPSELL_HINTS
+        ):
+            _run_tmux(socket_path, "send-keys", "-t", tmux_target, "Escape")
+            renderer_upsell_dismissed = True
+            if time.monotonic() < deadline:
+                time.sleep(_CLAUDE_READY_POLL_INTERVAL_S)
+                continue
         if _claude_prompt_rendered(pane):
             return
         if time.monotonic() >= deadline:

@@ -10,6 +10,7 @@ import {
   PanelLeftIcon,
   PanelRightCloseIcon,
   PanelRightIcon,
+  RefreshCcwIcon,
   ShareIcon,
   TerminalIcon,
   UserPlusIcon,
@@ -130,6 +131,10 @@ interface ChatHeaderProps {
   hasAgentInfo: boolean;
   /** Open the mobile agent-info dialog. */
   onAgentInfo: () => void;
+  /** Whether this session can switch to another history-preserving agent. */
+  canSwitchAgent: boolean;
+  /** Open the in-place agent/harness switch dialog. */
+  onSwitchAgent: () => void;
   /** Whether the mobile three-dot menu has any entry to offer. */
   hasHeaderMenu: boolean;
   /** Whether the Files tab/right panel is available for this session. */
@@ -181,6 +186,8 @@ export function ChatHeader({
   onShare,
   hasAgentInfo,
   onAgentInfo,
+  canSwitchAgent,
+  onSwitchAgent,
   hasHeaderMenu,
   showFilesPanel,
   hasRailContent,
@@ -326,6 +333,23 @@ export function ChatHeader({
         {/* Agent info: tools & policies for the bound agent. Desktop-only
             popover; self-hides when the agent has neither configured. */}
         {conversationId && <AgentInfoButton agent={boundAgent} sessionId={conversationId} />}
+        {canSwitchAgent && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Switch agent"
+                onClick={onSwitchAgent}
+                className="hidden text-muted-foreground hover:text-foreground md:inline-flex"
+              >
+                <RefreshCcwIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Switch agent</TooltipContent>
+          </Tooltip>
+        )}
         {/* Chat/Terminal switcher for terminal-first sessions — self-gates to
             null otherwise (and in the iOS shell, where it's the native bar). */}
         {conversationId && <ViewModeToggle />}
@@ -368,6 +392,16 @@ export function ChatHeader({
                 >
                   <InfoIcon className="size-4" />
                   Agent info
+                </DropdownMenuItem>
+              )}
+              {canSwitchAgent && (
+                <DropdownMenuItem
+                  onSelect={onSwitchAgent}
+                  data-testid="mobile-switch-agent"
+                  className="gap-2.5 px-2.5 py-2 text-ui"
+                >
+                  <RefreshCcwIcon className="size-4" />
+                  Switch agent
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

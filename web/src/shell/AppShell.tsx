@@ -96,6 +96,7 @@ import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { CommandPalette } from "./CommandPalette";
 import { Toaster } from "@/components/ui/toast";
 import { ForkSessionDialog } from "./ForkSessionDialog";
+import { SwitchAgentDialog } from "./SwitchAgentDialog";
 import { ForkDialogContextProvider, type ForkDialogContextValue } from "./ForkDialogContext";
 import { InlineTerminalsSection } from "./InlineTerminalsSection";
 import { WorkspacePanel } from "./WorkspacePanel";
@@ -329,6 +330,7 @@ export function AppShell() {
   // Agent tools & policies dialog — the mobile counterpart of the desktop
   // AgentInfoButton popover, opened from the header's three-dot menu.
   const [agentInfoOpen, setAgentInfoOpen] = useState(false);
+  const [switchAgentOpen, setSwitchAgentOpen] = useState(false);
   // Single source of truth for "terminal view on" — toggle and rail
   // both route through setPanelInitialKey so they can't disagree.
   const panelOpen = panelInitialKey !== null;
@@ -477,8 +479,12 @@ export function AppShell() {
     !!conversationId && isKnownTopLevel && (permissionLevel === null || permissionLevel >= 1);
   // Agent tools/policies exist to show.
   const hasAgentInfo = !!conversationId && agentHasInfo(boundAgent, conversationId);
+  // The server requires edit access and a top-level session. Its target
+  // picker further filters to harnesses that can rebuild the current history.
+  const canSwitchAgent =
+    !!conversationId && isKnownTopLevel && (permissionLevel === null || permissionLevel >= 2);
   // Whether the mobile three-dot menu has any entry to offer.
-  const hasHeaderMenu = canShare || hasAgentInfo;
+  const hasHeaderMenu = canShare || hasAgentInfo || canSwitchAgent;
   // The live snapshot is authoritative; the sidebar row is only a fallback
   // (it is absent entirely for sub-agent children, which the list omits).
   const wrapperLabel =
@@ -1614,6 +1620,8 @@ export function AppShell() {
                   onShare={() => setShareOpen(true)}
                   hasAgentInfo={hasAgentInfo}
                   onAgentInfo={() => setAgentInfoOpen(true)}
+                  canSwitchAgent={canSwitchAgent}
+                  onSwitchAgent={() => setSwitchAgentOpen(true)}
                   hasHeaderMenu={hasHeaderMenu}
                   showFilesPanel={showFilesPanel}
                   hasRailContent={hasRailContent}
@@ -1838,6 +1846,13 @@ export function AppShell() {
                 // reopened dialog) doesn't silently fork a partial history.
                 if (!open) setForkUpToResponseId(null);
               }}
+            />
+          )}
+          {conversationId && canSwitchAgent && (
+            <SwitchAgentDialog
+              sessionId={conversationId}
+              open={switchAgentOpen}
+              onOpenChange={setSwitchAgentOpen}
             />
           )}
           {/* Agent tools & policies — the mobile counterpart of the desktop
